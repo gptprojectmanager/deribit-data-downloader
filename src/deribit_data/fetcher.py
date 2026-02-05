@@ -115,6 +115,13 @@ class DeribitFetcher:
                         f"Server error {e.response.status_code}, retrying in {wait_time:.1f}s"
                     )
                     time.sleep(wait_time)
+                elif e.response.status_code == 400:  # Bad request - may be transient
+                    wait_time = self.config.backoff_base ** (attempt + 1)
+                    logger.warning(
+                        f"Bad request 400, retrying in {wait_time:.1f}s "
+                        f"(attempt {attempt + 1}/{self.config.max_retries})"
+                    )
+                    time.sleep(wait_time)
                 else:
                     raise
 

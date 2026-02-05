@@ -55,7 +55,7 @@ class DeribitConfig(BaseModel):
         description="Deribit history API base URL",
     )
     http_timeout: float = Field(default=30.0, ge=5.0, le=120.0, description="HTTP timeout seconds")
-    max_retries: int = Field(default=3, ge=1, le=10, description="Max retry attempts")
+    max_retries: int = Field(default=5, ge=1, le=30, description="Max retry attempts")
     rate_limit_delay: float = Field(
         default=0.1, ge=0.0, le=5.0, description="Delay between requests"
     )
