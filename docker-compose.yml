@@ -1,0 +1,55 @@
+services:
+  deribit-data:
+    build: .
+    volumes:
+      # Data volume (persistent)
+      - deribit-data:/data
+      # Checkpoint volume (for crash recovery)
+      - deribit-checkpoints:/checkpoints
+    environment:
+      - DERIBIT_CATALOG_PATH=/data/deribit_options
+      - DERIBIT_CHECKPOINT_DIR=/checkpoints
+      - DERIBIT_COMPRESSION=zstd
+      - DERIBIT_FLUSH_EVERY_PAGES=100
+    # Override command for specific operations
+    # command: backfill --currency ETH --resume
+
+  # Backfill BTC (run manually)
+  backfill-btc:
+    build: .
+    profiles: ["backfill"]
+    volumes:
+      - deribit-data:/data
+      - deribit-checkpoints:/checkpoints
+    environment:
+      - DERIBIT_CATALOG_PATH=/data/deribit_options
+      - DERIBIT_CHECKPOINT_DIR=/checkpoints
+    command: backfill --currency BTC --resume
+
+  # Backfill ETH (run manually)
+  backfill-eth:
+    build: .
+    profiles: ["backfill"]
+    volumes:
+      - deribit-data:/data
+      - deribit-checkpoints:/checkpoints
+    environment:
+      - DERIBIT_CATALOG_PATH=/data/deribit_options
+      - DERIBIT_CHECKPOINT_DIR=/checkpoints
+    command: backfill --currency ETH --resume
+
+  # Daily sync (schedule with cron/systemd)
+  sync:
+    build: .
+    profiles: ["sync"]
+    volumes:
+      - deribit-data:/data
+    environment:
+      - DERIBIT_CATALOG_PATH=/data/deribit_options
+    command: sync --currency BTC
+
+volumes:
+  deribit-data:
+    driver: local
+  deribit-checkpoints:
+    driver: local
