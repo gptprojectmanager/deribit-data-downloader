@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -38,7 +38,7 @@ class ManifestEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ManifestEntry":
+    def from_dict(cls, data: dict) -> ManifestEntry:
         """Create from dictionary."""
         return cls(
             sha256=data["sha256"],
@@ -95,7 +95,7 @@ class ManifestManager:
         tmp_path = self.manifest_path.with_suffix(".json.tmp")
 
         data = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "catalog_path": str(self.catalog_path.absolute()),
             "files": {path: entry.to_dict() for path, entry in sorted(self._manifest.items())},
         }
@@ -184,13 +184,17 @@ class ManifestManager:
         # Verify SHA256
         actual_sha256 = self._compute_sha256(file_path)
         if actual_sha256 != entry.sha256:
-            logger.error(f"SHA256 mismatch for {rel_path}: expected {entry.sha256}, got {actual_sha256}")
+            logger.error(
+                f"SHA256 mismatch for {rel_path}: expected {entry.sha256}, got {actual_sha256}"
+            )
             return False
 
         # Verify size
         actual_size = file_path.stat().st_size
         if actual_size != entry.size_bytes:
-            logger.error(f"Size mismatch for {rel_path}: expected {entry.size_bytes}, got {actual_size}")
+            logger.error(
+                f"Size mismatch for {rel_path}: expected {entry.size_bytes}, got {actual_size}"
+            )
             return False
 
         return True

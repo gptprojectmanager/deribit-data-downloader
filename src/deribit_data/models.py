@@ -5,20 +5,20 @@ Provides Pydantic models for option trades, DVOL candles, and checkpoint state.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class OptionType(str, Enum):
+class OptionType(StrEnum):
     """Option type enum."""
 
     CALL = "call"
     PUT = "put"
 
 
-class TradeDirection(str, Enum):
+class TradeDirection(StrEnum):
     """Trade direction enum."""
 
     BUY = "buy"
@@ -125,7 +125,7 @@ class CheckpointState(BaseModel):
         page: int,
         trades_count: int,
         file_written: str | None = None,
-    ) -> "CheckpointState":
+    ) -> CheckpointState:
         """Create updated checkpoint with new progress."""
         files = list(self.files_written)
         if file_written and file_written not in files:
@@ -137,6 +137,6 @@ class CheckpointState(BaseModel):
             last_page=page,
             trades_fetched=self.trades_fetched + trades_count,
             started_at=self.started_at,
-            last_flush_at=datetime.now(timezone.utc),
+            last_flush_at=datetime.now(UTC),
             files_written=files,
         )

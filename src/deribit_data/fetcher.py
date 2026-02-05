@@ -66,7 +66,7 @@ class DeribitFetcher:
         """Close HTTP client."""
         self._client.close()
 
-    def __enter__(self) -> "DeribitFetcher":
+    def __enter__(self) -> DeribitFetcher:
         return self
 
     def __exit__(self, *args) -> None:
@@ -123,9 +123,7 @@ class DeribitFetcher:
                 logger.warning(f"Request error: {e}, retrying in {wait_time:.1f}s")
                 time.sleep(wait_time)
 
-        raise RuntimeError(
-            f"Max retries ({self.config.max_retries}) exceeded for {url}"
-        )
+        raise RuntimeError(f"Max retries ({self.config.max_retries}) exceeded for {url}")
 
     def _parse_instrument(self, instrument_name: str) -> dict | None:
         """Parse instrument name to extract details."""

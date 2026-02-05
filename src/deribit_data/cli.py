@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import click
@@ -107,15 +107,21 @@ def backfill(
     currency = currency.upper()
 
     # Date range
-    start_date = start.replace(tzinfo=timezone.utc) if start else datetime(
-        cfg.historical_start_date.year,
-        cfg.historical_start_date.month,
-        cfg.historical_start_date.day,
-        tzinfo=timezone.utc,
+    start_date = (
+        start.replace(tzinfo=UTC)
+        if start
+        else datetime(
+            cfg.historical_start_date.year,
+            cfg.historical_start_date.month,
+            cfg.historical_start_date.day,
+            tzinfo=UTC,
+        )
     )
-    end_date = end.replace(tzinfo=timezone.utc) if end else (
-        datetime.now(timezone.utc) - timedelta(days=1)
-    ).replace(hour=23, minute=59, second=59)
+    end_date = (
+        end.replace(tzinfo=UTC)
+        if end
+        else (datetime.now(UTC) - timedelta(days=1)).replace(hour=23, minute=59, second=59)
+    )
 
     console.print(f"[bold]Backfill {currency}[/bold]")
     console.print(f"  Catalog: {cfg.catalog_path}")
@@ -146,44 +152,46 @@ def backfill(
     total_files: list[str] = list(checkpoint.files_written)
 
     try:
-        with DeribitFetcher(cfg) as fetcher:
-            with Progress(
+        with (
+            DeribitFetcher(cfg) as fetcher,
+            Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
-            ) as progress:
-                task = progress.add_task(f"Fetching {currency}...", total=None)
+            ) as progress,
+        ):
+            task = progress.add_task(f"Fetching {currency}...", total=None)
 
-                for batch in fetcher.fetch_trades_streaming(
-                    currency=currency,
-                    start_date=start_date,
-                    end_date=end_date,
-                    resume_from_ms=resume_from_ms,
-                ):
-                    # Save batch
-                    written_files = storage.save_trades(batch, currency)
+            for batch in fetcher.fetch_trades_streaming(
+                currency=currency,
+                start_date=start_date,
+                end_date=end_date,
+                resume_from_ms=resume_from_ms,
+            ):
+                # Save batch
+                written_files = storage.save_trades(batch, currency)
 
-                    # Update manifest
-                    for f in written_files:
-                        manifest.update_file(f)
-                        if str(f) not in total_files:
-                            total_files.append(str(f))
+                # Update manifest
+                for f in written_files:
+                    manifest.update_file(f)
+                    if str(f) not in total_files:
+                        total_files.append(str(f))
 
-                    # Update checkpoint
-                    last_ts = int(batch[-1].timestamp.timestamp() * 1000)
-                    checkpoint = checkpoint.update_progress(
-                        timestamp_ms=last_ts,
-                        page=checkpoint.last_page + cfg.flush_every_pages,
-                        trades_count=len(batch),
-                        file_written=str(written_files[-1]) if written_files else None,
-                    )
-                    checkpoint_mgr.save(checkpoint)
+                # Update checkpoint
+                last_ts = int(batch[-1].timestamp.timestamp() * 1000)
+                checkpoint = checkpoint.update_progress(
+                    timestamp_ms=last_ts,
+                    page=checkpoint.last_page + cfg.flush_every_pages,
+                    trades_count=len(batch),
+                    file_written=str(written_files[-1]) if written_files else None,
+                )
+                checkpoint_mgr.save(checkpoint)
 
-                    total_trades += len(batch)
-                    progress.update(
-                        task,
-                        description=f"Fetching {currency}... {total_trades:,} trades",
-                    )
+                total_trades += len(batch)
+                progress.update(
+                    task,
+                    description=f"Fetching {currency}... {total_trades:,} trades",
+                )
 
         # Save manifest
         manifest.save()
@@ -191,7 +199,9 @@ def backfill(
         # Delete checkpoint on success
         checkpoint_mgr.delete(currency)
 
-        console.print(f"[green]Complete: {total_trades:,} trades in {len(total_files)} files[/green]")
+        console.print(
+            f"[green]Complete: {total_trades:,} trades in {len(total_files)} files[/green]"
+        )
 
     except KeyboardInterrupt:
         console.print("[yellow]Interrupted. Use --resume to continue.[/yellow]")
@@ -236,7 +246,7 @@ def sync(ctx: click.Context, currency: str, catalog: Path | None) -> None:
         return
 
     start_date = last_ts + timedelta(seconds=1)
-    end_date = datetime.now(timezone.utc)
+    end_date = datetime.now(UTC)
 
     console.print(f"[bold]Sync {currency}[/bold]")
     console.print(f"  From: {start_date.isoformat()}")
@@ -294,8 +304,8 @@ def dvol(
         cfg = cfg.model_copy(update={"catalog_path": catalog})
 
     currency = currency.upper()
-    start_date = start.replace(tzinfo=timezone.utc)
-    end_date = (end or datetime.now(timezone.utc)).replace(tzinfo=timezone.utc)
+    start_date = start.replace(tzinfo=UTC)
+    end_date = (end or datetime.now(UTC)).replace(tzinfo=UTC)
 
     console.print(f"[bold]DVOL {currency}[/bold]")
     console.print(f"  Range: {start_date.date()} to {end_date.date()}")
@@ -354,7 +364,9 @@ def validate(
         table.add_row("Total rows", f"{result.stats.get('total_rows', 0):,}")
         table.add_row("Total files", str(result.stats.get("total_files", 0)))
         if result.stats.get("date_range"):
-            table.add_row("Date range", f"{result.stats['date_range'][0]} to {result.stats['date_range'][1]}")
+            table.add_row(
+                "Date range", f"{result.stats['date_range'][0]} to {result.stats['date_range'][1]}"
+            )
         console.print(table)
 
         # Show issues
@@ -368,7 +380,9 @@ def validate(
                     "low": "dim",
                     "info": "dim",
                 }.get(issue.severity.value, "white")
-                console.print(f"  [{color}]{issue.severity.value.upper()}[/{color}]: {issue.message}")
+                console.print(
+                    f"  [{color}]{issue.severity.value.upper()}[/{color}]: {issue.message}"
+                )
             if len(result.issues) > 10:
                 console.print(f"  ... and {len(result.issues) - 10} more")
 
