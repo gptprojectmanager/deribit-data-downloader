@@ -40,7 +40,7 @@ class TestDeribitConfig:
         config = DeribitConfig()
         assert config.base_url == "https://history.deribit.com/api/v2/public"
         assert config.http_timeout == 30.0
-        assert config.max_retries == 3
+        assert config.max_retries == 5
         assert config.batch_size == 10000
         assert config.compression == "zstd"
         assert config.currencies == ["BTC", "ETH"]
@@ -81,7 +81,7 @@ class TestDeribitConfig:
         config = DeribitConfig.from_env()
 
         assert config.http_timeout == 45.0
-        assert config.max_retries == 3  # default
+        assert config.max_retries == 5  # default
 
     def test_from_file_json(self, tmp_path: Path) -> None:
         """Test loading from JSON file."""

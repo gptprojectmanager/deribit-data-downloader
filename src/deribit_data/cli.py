@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -21,10 +22,13 @@ from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from deribit_data.audit import AuditLog
 from deribit_data.checkpoint import CheckpointManager
 from deribit_data.config import DeribitConfig
+from deribit_data.dead_letter import DeadLetterQueue
 from deribit_data.fetcher import DeribitFetcher
 from deribit_data.manifest import ManifestManager
+from deribit_data.reconciliation import DataReconciler
 from deribit_data.storage import ParquetStorage
 from deribit_data.validator import DataValidator
 
@@ -131,6 +135,11 @@ def backfill(
     checkpoint_mgr = CheckpointManager(cfg.checkpoint_dir)
     storage = ParquetStorage(cfg.catalog_path, cfg.compression, cfg.compression_level)
     manifest = ManifestManager(cfg.catalog_path)
+    dlq = DeadLetterQueue(cfg.catalog_path)
+    audit = AuditLog(cfg.catalog_path)
+
+    # Track timing
+    start_time = time.time()
 
     # Check for existing checkpoint
     checkpoint = None
@@ -146,6 +155,9 @@ def backfill(
     # Create initial checkpoint if not resuming
     if not checkpoint:
         checkpoint = checkpoint_mgr.create_initial(currency)
+
+    # Log start event
+    audit.log_backfill_start(currency, start_date, end_date, resume=resume)
 
     # Fetch and save
     total_trades = checkpoint.trades_fetched
@@ -167,6 +179,7 @@ def backfill(
                 start_date=start_date,
                 end_date=end_date,
                 resume_from_ms=resume_from_ms,
+                dead_letter_queue=dlq,
             ):
                 # Save batch
                 written_files = storage.save_trades(batch, currency)
@@ -203,10 +216,29 @@ def backfill(
             f"[green]Complete: {total_trades:,} trades in {len(total_files)} files[/green]"
         )
 
+        # Report DLQ stats
+        dlq_failures = dlq.get_total_failures(currency)
+        if dlq_failures > 0:
+            console.print(
+                f"[yellow]Warning: {dlq_failures:,} trades failed to parse "
+                f"(see {cfg.catalog_path}/_dead_letters/)[/yellow]"
+            )
+
+        # Log completion
+        duration = time.time() - start_time
+        audit.log_backfill_complete(
+            currency=currency,
+            trades_count=total_trades,
+            files_count=len(total_files),
+            duration_seconds=duration,
+            dlq_failures=dlq_failures,
+        )
+
     except KeyboardInterrupt:
         console.print("[yellow]Interrupted. Use --resume to continue.[/yellow]")
         sys.exit(1)
     except Exception as e:
+        audit.log_backfill_error(currency, str(e))
         console.print(f"[red]Error: {e}[/red]")
         console.print("[yellow]Use --resume to continue from checkpoint.[/yellow]")
         raise
@@ -238,6 +270,7 @@ def sync(ctx: click.Context, currency: str, catalog: Path | None) -> None:
     currency = currency.upper()
     storage = ParquetStorage(cfg.catalog_path, cfg.compression, cfg.compression_level)
     manifest = ManifestManager(cfg.catalog_path)
+    dlq = DeadLetterQueue(cfg.catalog_path)
 
     # Get last timestamp
     last_ts = storage.get_last_trade_timestamp(currency)
@@ -257,6 +290,7 @@ def sync(ctx: click.Context, currency: str, catalog: Path | None) -> None:
             currency=currency,
             start_date=start_date,
             end_date=end_date,
+            dead_letter_queue=dlq,
         ):
             written_files = storage.save_trades(batch, currency)
             for f in written_files:
@@ -265,6 +299,13 @@ def sync(ctx: click.Context, currency: str, catalog: Path | None) -> None:
 
     manifest.save()
     console.print(f"[green]Synced {total_trades:,} new trades[/green]")
+
+    # Report DLQ stats
+    dlq_failures = dlq.get_total_failures(currency)
+    if dlq_failures > 0:
+        console.print(
+            f"[yellow]Warning: {dlq_failures:,} trades failed to parse[/yellow]"
+        )
 
 
 @main.command()
@@ -403,6 +444,90 @@ def validate(
                 console.print(f"  [red]FAILED: {f}[/red]")
 
     if not all_passed:
+        sys.exit(1)
+
+
+@main.command()
+@click.option(
+    "-c",
+    "--currency",
+    required=True,
+    type=click.Choice(["BTC", "ETH"], case_sensitive=False),
+    help="Currency to reconcile",
+)
+@click.option("--catalog", type=click.Path(path_type=Path), default=None, help="Catalog path")
+@click.option("--sample", type=int, default=None, help="Sample N random days (faster)")
+@click.option("--full", is_flag=True, help="Full reconciliation (slow)")
+def reconcile(
+    currency: str,
+    catalog: Path | None,
+    sample: int | None,
+    full: bool,
+) -> None:
+    """Reconcile local data against Deribit API.
+
+    Verifies data completeness by comparing trade counts.
+
+    Example:
+        deribit-data reconcile --currency BTC --sample 10
+    """
+    cfg = DeribitConfig.from_env()
+    if catalog:
+        cfg = cfg.model_copy(update={"catalog_path": catalog})
+
+    currency = currency.upper()
+
+    console.print(f"[bold]Reconciling {currency}[/bold]")
+    console.print(f"  Catalog: {cfg.catalog_path}")
+
+    with DataReconciler(cfg, cfg.catalog_path) as reconciler:
+        if full:
+            console.print("  Mode: Full (this may take a while)")
+            report = reconciler.quick_reconcile(currency, sample_days=1000)
+        elif sample:
+            console.print(f"  Mode: Sample ({sample} random days)")
+            report = reconciler.quick_reconcile(currency, sample_days=sample)
+        else:
+            console.print("  Mode: Quick (10 random days)")
+            report = reconciler.quick_reconcile(currency)
+
+    # Show results
+    table = Table(show_header=False, box=None)
+    table.add_column("Key", style="dim")
+    table.add_column("Value")
+    table.add_row("Days checked", str(report.total_days))
+    table.add_row("Matched days", f"[green]{report.matched_days}[/green]")
+    table.add_row("Incomplete days", f"[yellow]{report.incomplete_days}[/yellow]" if report.incomplete_days else "0")
+    table.add_row("Missing days", f"[red]{report.missing_days}[/red]" if report.missing_days else "0")
+    table.add_row("Local trades", f"{report.total_local_trades:,}")
+    table.add_row("API trades", f"{report.total_api_trades:,}")
+    table.add_row("Completeness", f"{report.completeness_pct:.1f}%")
+    console.print(table)
+
+    # Show incomplete dates
+    incomplete = report.get_incomplete_dates()
+    if incomplete:
+        console.print(f"\n[yellow]Incomplete dates ({len(incomplete)}):[/yellow]")
+        for date in incomplete[:10]:
+            result = next(r for r in report.results if r.date == date)
+            console.print(
+                f"  {date.date()}: local={result.local_count:,}, "
+                f"api={result.api_count or 'N/A'}, diff={result.difference:+,}"
+            )
+        if len(incomplete) > 10:
+            console.print(f"  ... and {len(incomplete) - 10} more")
+
+    # Show errors
+    if report.errors:
+        console.print(f"\n[red]Errors ({len(report.errors)}):[/red]")
+        for err in report.errors[:5]:
+            console.print(f"  {err}")
+
+    # Final verdict
+    if report.is_complete:
+        console.print("\n[green]DATA COMPLETE[/green]")
+    else:
+        console.print("\n[yellow]DATA INCOMPLETE[/yellow]")
         sys.exit(1)
 
 

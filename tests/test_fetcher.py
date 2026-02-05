@@ -73,9 +73,10 @@ class TestDeribitFetcher:
             "mark_price": 0.051,
         }
 
-        trade = fetcher._parse_trade(trade_data)
+        trade, error = fetcher._parse_trade(trade_data)
 
         assert trade is not None
+        assert error is None
         assert trade.trade_id == "12345"
         assert trade.instrument_id == "BTC-27DEC24-100000-C"
         assert trade.price == 0.05
@@ -97,10 +98,30 @@ class TestDeribitFetcher:
             "direction": "buy",
         }
 
-        trade = fetcher._parse_trade(trade_data)
+        trade, error = fetcher._parse_trade(trade_data)
 
         assert trade is not None
+        assert error is None
         assert trade.iv is None
+
+    def test_parse_trade_invalid_instrument(self, mock_config: DeribitConfig) -> None:
+        """Test parsing trade with invalid instrument returns error."""
+        fetcher = DeribitFetcher(mock_config)
+
+        trade_data = {
+            "trade_id": "12345",
+            "instrument_name": "INVALID-INSTRUMENT",
+            "timestamp": 1704067200000,
+            "price": 0.05,
+            "amount": 1.0,
+            "direction": "buy",
+        }
+
+        trade, error = fetcher._parse_trade(trade_data)
+
+        assert trade is None
+        assert error is not None
+        assert "Invalid instrument format" in error
 
     def test_context_manager(self, mock_config: DeribitConfig) -> None:
         """Test context manager."""

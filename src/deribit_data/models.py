@@ -98,6 +98,24 @@ class DVOLCandle(BaseModel):
         return v
 
 
+class FailedTrade(BaseModel):
+    """Failed trade for dead letter queue.
+
+    Captures malformed trades that couldn't be parsed for debugging and recovery.
+
+    Attributes:
+        raw_data: Original JSON data from API.
+        error: Error message describing parse failure.
+        timestamp: When the failure occurred.
+        currency: Currency being processed.
+    """
+
+    raw_data: dict
+    error: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    currency: str
+
+
 class CheckpointState(BaseModel):
     """Checkpoint state for crash recovery.
 

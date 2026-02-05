@@ -15,10 +15,17 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from deribit_data.models import DVOLCandle, OptionTrade, OptionType, TradeDirection
+from deribit_data.models import (
+    DVOLCandle,
+    FailedTrade,
+    OptionTrade,
+    OptionType,
+    TradeDirection,
+)
 
 if TYPE_CHECKING:
     from deribit_data.config import DeribitConfig
+    from deribit_data.dead_letter import DeadLetterQueue
 
 logger = logging.getLogger(__name__)
 
@@ -154,12 +161,16 @@ class DeribitFetcher:
             "option_type": OptionType.CALL if groups["type"] == "C" else OptionType.PUT,
         }
 
-    def _parse_trade(self, trade_data: dict) -> OptionTrade | None:
-        """Parse raw trade data into OptionTrade."""
+    def _parse_trade(self, trade_data: dict) -> tuple[OptionTrade | None, str | None]:
+        """Parse raw trade data into OptionTrade.
+
+        Returns:
+            Tuple of (trade, error). If trade is None, error contains the reason.
+        """
         instrument_name = trade_data.get("instrument_name", "")
         parsed = self._parse_instrument(instrument_name)
         if not parsed:
-            return None
+            return None, f"Invalid instrument format: {instrument_name}"
 
         # IV may be None for some trades
         iv = trade_data.get("iv")
@@ -168,7 +179,7 @@ class DeribitFetcher:
         trade_id = str(trade_data.get("trade_id", trade_data.get("timestamp", "")))
 
         try:
-            return OptionTrade(
+            trade = OptionTrade(
                 trade_id=trade_id,
                 instrument_id=instrument_name,
                 timestamp=datetime.fromtimestamp(trade_data["timestamp"] / 1000, tz=UTC),
@@ -183,9 +194,9 @@ class DeribitFetcher:
                 index_price=trade_data.get("index_price"),
                 mark_price=trade_data.get("mark_price"),
             )
+            return trade, None
         except (KeyError, ValueError, TypeError) as e:
-            logger.debug(f"Failed to parse trade: {e}")
-            return None
+            return None, f"Parse error: {e}"
 
     def fetch_trades_streaming(
         self,
@@ -193,6 +204,7 @@ class DeribitFetcher:
         start_date: datetime,
         end_date: datetime,
         resume_from_ms: int | None = None,
+        dead_letter_queue: DeadLetterQueue | None = None,
     ) -> Generator[list[OptionTrade], None, None]:
         """Fetch trades as a generator (streaming).
 
@@ -204,6 +216,7 @@ class DeribitFetcher:
             start_date: Start date (UTC).
             end_date: End date (UTC).
             resume_from_ms: Resume from this timestamp (milliseconds).
+            dead_letter_queue: Optional DLQ for failed trade parsing.
 
         Yields:
             Batches of OptionTrade objects.
@@ -244,9 +257,13 @@ class DeribitFetcher:
                 break
 
             for trade_data in trades_data:
-                trade = self._parse_trade(trade_data)
+                trade, error = self._parse_trade(trade_data)
                 if trade:
                     batch.append(trade)
+                elif error and dead_letter_queue:
+                    dead_letter_queue.add(
+                        FailedTrade(raw_data=trade_data, error=error, currency=currency)
+                    )
 
             # Update pagination
             if has_more and trades_data:
