@@ -298,7 +298,10 @@ class DeribitFetcher:
         end_date: datetime,
         resolution: int = 3600,
     ) -> list[DVOLCandle]:
-        """Fetch DVOL (Deribit Volatility Index) data.
+        """Fetch DVOL (Deribit Volatility Index) data with pagination.
+
+        Deribit DVOL API returns the most recent data first and uses a
+        continuation token for backward pagination.
 
         Args:
             currency: Currency (BTC, ETH).
@@ -307,42 +310,71 @@ class DeribitFetcher:
             resolution: Candle resolution in seconds (default: 1 hour).
 
         Returns:
-            List of DVOLCandle objects.
+            List of DVOLCandle objects sorted by timestamp ascending.
         """
         # DVOL endpoint on main API
         url = "https://www.deribit.com/api/v2/public/get_volatility_index_data"
 
         start_ts = int(start_date.timestamp() * 1000)
-        end_ts = int(end_date.timestamp() * 1000)
+        current_end_ts = int(end_date.timestamp() * 1000)
 
-        params = {
-            "currency": currency,
-            "start_timestamp": start_ts,
-            "end_timestamp": end_ts,
-            "resolution": resolution,
-        }
+        all_candles: list[DVOLCandle] = []
+        page = 0
+        max_pages = 100  # Safety limit (~100K candles max)
 
-        response = self._request_with_backoff(url, params)
-        result = response.get("result", {})
-        data = result.get("data", [])
+        while page < max_pages:
+            params = {
+                "currency": currency,
+                "start_timestamp": start_ts,
+                "end_timestamp": current_end_ts,
+                "resolution": resolution,
+            }
 
-        candles: list[DVOLCandle] = []
-        for row in data:
-            # row format: [timestamp, open, high, low, close]
-            try:
-                candle = DVOLCandle(
-                    timestamp=datetime.fromtimestamp(row[0] / 1000, tz=UTC),
-                    open=float(row[1]),
-                    high=float(row[2]),
-                    low=float(row[3]),
-                    close=float(row[4]),
-                )
-                candles.append(candle)
-            except (IndexError, ValueError, TypeError) as e:
-                logger.debug(f"Failed to parse DVOL candle: {e}")
+            response = self._request_with_backoff(url, params)
+            result = response.get("result", {})
+            data = result.get("data", [])
+            continuation = result.get("continuation")
 
-        logger.info(f"Fetched {len(candles)} DVOL candles for {currency}")
-        return candles
+            if not data:
+                break
+
+            batch_candles: list[DVOLCandle] = []
+            for row in data:
+                # row format: [timestamp, open, high, low, close]
+                try:
+                    candle = DVOLCandle(
+                        timestamp=datetime.fromtimestamp(row[0] / 1000, tz=UTC),
+                        open=float(row[1]),
+                        high=float(row[2]),
+                        low=float(row[3]),
+                        close=float(row[4]),
+                    )
+                    batch_candles.append(candle)
+                except (IndexError, ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse DVOL candle: {e}")
+
+            if not batch_candles:
+                break
+
+            all_candles.extend(batch_candles)
+            page += 1
+
+            logger.info(
+                f"DVOL page {page}: fetched {len(batch_candles)} candles, "
+                f"total {len(all_candles)}"
+            )
+
+            # Use continuation token as new end_timestamp for backward pagination
+            if not continuation or continuation <= start_ts:
+                break
+
+            current_end_ts = continuation
+
+        # Sort by timestamp ascending (data comes newest-first)
+        all_candles.sort(key=lambda c: c.timestamp)
+
+        logger.info(f"Fetched {len(all_candles)} DVOL candles for {currency}")
+        return all_candles
 
     def get_currencies(self) -> list[str]:
         """Get available currencies.
