@@ -2,47 +2,72 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
-    branches: [main, master]
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: uv sync --dev
 
       - name: Lint with ruff
         run: |
-          ruff check src/ tests/
-          ruff format --check src/ tests/
+          uv run ruff check src/ tests/
+          uv run ruff format --check src/ tests/
 
       - name: Type check with mypy
-        run: mypy src/
+        run: uv run mypy src/
 
-      - name: Run tests
-        run: pytest tests/ -v --cov=src/deribit_data --cov-report=xml
+      - name: Run tests with coverage
+        id: coverage
+        run: |
+          uv run pytest tests/ -v --cov=src/deribit_data --cov-report=term --cov-report=json
+          TOTAL=$(uv run python -c "import json; print(int(json.load(open('coverage.json'))['totals']['percent_covered_display']))")
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
+      - name: Upload coverage badge
+        if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
         with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ secrets.COVERAGE_GIST_ID }}
+          filename: deribit_data_downloader_coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.total }}%
+          valColorRange: ${{ steps.coverage.outputs.total }}
+          minColorRange: 50
+          maxColorRange: 90
+        continue-on-error: true
 
   docker:
     runs-on: ubuntu-latest
