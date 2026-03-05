@@ -46,9 +46,9 @@ dev = [
 deribit-data = "deribit_data.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/gptprojectmanager/deribit-data-downloader"
-Repository = "https://github.com/gptprojectmanager/deribit-data-downloader"
-Issues = "https://github.com/gptprojectmanager/deribit-data-downloader/issues"
+Homepage = "https://github.com/gptcompany/deribit-data-downloader"
+Repository = "https://github.com/gptcompany/deribit-data-downloader"
+Issues = "https://github.com/gptcompany/deribit-data-downloader/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/deribit_data"]

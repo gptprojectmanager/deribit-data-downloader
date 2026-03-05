@@ -1,10 +1,10 @@
 # deribit-data-downloader
 
-![CI](https://github.com/gptprojectmanager/deribit-data-downloader/actions/workflows/ci.yml/badge.svg?branch=main)
+![CI](https://github.com/gptcompany/deribit-data-downloader/actions/workflows/ci.yml/badge.svg?branch=main)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python)
-![License](https://img.shields.io/github/license/gptprojectmanager/deribit-data-downloader?style=flat-square)
-![Last Commit](https://img.shields.io/github/last-commit/gptprojectmanager/deribit-data-downloader?style=flat-square)
-![Issues](https://img.shields.io/github/issues/gptprojectmanager/deribit-data-downloader?style=flat-square)
+![License](https://img.shields.io/github/license/gptcompany/deribit-data-downloader?style=flat-square)
+![Last Commit](https://img.shields.io/github/last-commit/gptcompany/deribit-data-downloader?style=flat-square)
+![Issues](https://img.shields.io/github/issues/gptcompany/deribit-data-downloader?style=flat-square)
 
 High-performance Deribit options data downloader with crash recovery, streaming writes, and NautilusTrader compatibility.
 
