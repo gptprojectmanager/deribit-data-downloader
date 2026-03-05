@@ -140,6 +140,16 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+
+## CI/CD
+
+This repository uses **GitHub Actions** for continuous integration.
+
+- **Triggers**: Workflows run on every push and pull request to `main` and `master`.
+- **Testing**: Automated tests are executed on both Linux and macOS.
+- **Coverage**: Coverage reports are uploaded to **Codecov** using secure **OIDC** authentication.
+- **Docker**: Docker builds are automatically verified during CI.
+
 ## License
 
 MIT
