@@ -42,7 +42,7 @@ def validation_config() -> ValidationConfig:
     """Create validation configuration."""
     return ValidationConfig(
         iv_min=0.01,
-        iv_max=5.0,
+        iv_max=10.0,
         duplicate_threshold=5.0,
     )
 

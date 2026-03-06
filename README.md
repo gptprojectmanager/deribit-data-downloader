@@ -1,6 +1,6 @@
 # deribit-data-downloader
 
-![CI](https://github.com/gptcompany/deribit-data-downloader/actions/workflows/ci.yml/badge.svg?branch=main)
+![CI](https://github.com/gptcompany/deribit-data-downloader/actions/workflows/ci.yml/badge.svg?branch=master)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square&logo=python)
 ![License](https://img.shields.io/github/license/gptcompany/deribit-data-downloader?style=flat-square)
 ![Last Commit](https://img.shields.io/github/last-commit/gptcompany/deribit-data-downloader?style=flat-square)
