@@ -15,7 +15,7 @@ class ValidationConfig(BaseModel):
 
     # IV bounds
     iv_min: float = Field(default=0.01, ge=0.0, description="Minimum valid IV")
-    iv_max: float = Field(default=5.0, le=10.0, description="Maximum valid IV")
+    iv_max: float = Field(default=10.0, le=10.0, description="Maximum valid IV")
 
     # Volume thresholds
     volume_spike_threshold: float = Field(

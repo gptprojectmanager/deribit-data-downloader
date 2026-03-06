@@ -33,7 +33,7 @@ class OptionTrade(BaseModel):
         instrument_id: Deribit instrument name (e.g., BTC-27DEC24-100000-C).
         timestamp: Trade execution timestamp (UTC).
         price: Trade price in USD.
-        iv: Implied volatility at execution (0.0-5.0 range).
+        iv: Implied volatility at execution (0.0-10.0 range).
         amount: Trade size in contracts.
         direction: Trade direction (buy/sell).
         underlying: Underlying asset (BTC, ETH).
@@ -50,7 +50,7 @@ class OptionTrade(BaseModel):
     instrument_id: str
     timestamp: datetime
     price: float = Field(ge=0)
-    iv: float | None = Field(default=None, ge=0, le=5.0)
+    iv: float | None = Field(default=None, ge=0, le=10.0)
     amount: float = Field(gt=0)
     direction: TradeDirection
     underlying: str
