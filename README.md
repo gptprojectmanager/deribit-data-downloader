@@ -129,7 +129,10 @@ This host uses `/etc/downloader-sync.env` for path configuration:
 
 ### Notifications
 Healthchecks pings are emitted by `cron-wrapper.sh` (monitoring-stack).
-Discord delivery is configured on the Healthchecks server. To (re)configure the webhook on this host, run:
+Discord delivery is configured via environment (no hardcoded webhook). On this host, the webhook is read
+from `/media/sam/1TB/.env` via `dotenvx` (use `DISCORD_WEBHOOK_HISTORY` for run results), and
+`DISCORD_NOTIFY_ON_SUCCESS=1` enables per-run success alerts.
+To (re)configure the Healthchecks Discord webhook on this host, run:
 ```bash
 dotenvx run -f /media/sam/1TB/.env -- /media/sam/1TB/monitoring-stack/scripts/configure-healthchecks-discord.sh
 ```
