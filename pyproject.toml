@@ -69,7 +69,7 @@ warn_unused_ignores = true
 disallow_any_generics = false
 
 [[tool.mypy.overrides]]
-module = ["pyarrow", "pyarrow.*"]
+module = ["pyarrow", "pyarrow.*", "yaml"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
